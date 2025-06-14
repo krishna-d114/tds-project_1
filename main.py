@@ -1,37 +1,23 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel
 import json
 import re
 import requests
-import os
-from fastapi.middleware.cors import CORSMiddleware
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 app = FastAPI()
 
-# enable CORS for GET, POST, OPTIONS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],            
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
-    allow_credentials=True,
-)
-
-# load your secrets from env
 AIPIPE_API_URL = "https://aipipe.org/openrouter/v1/chat/completions"
 AIPIPE_API_KEY = os.getenv("AIPIPE_API_KEY")
 MODEL_NAME = "openai/gpt-3.5-turbo-0125"
 
-# load scraped data
 with open("data/discourse_posts.json", "r", encoding="utf-8") as f:
     discourse_data = json.load(f)
 
 with open("data/course_content.json", "r", encoding="utf-8") as f:
     course_content = json.load(f)
 
-# build TF-IDF
 discourse_corpus = []
 url_map = []
 for thread in discourse_data:
@@ -45,8 +31,8 @@ discourse_vectors = vectorizer.fit_transform(discourse_corpus)
 
 KEYWORDS = ["TDS", "tools", "data", "science", "assignment", "GA", "graded", "project", "excel", "bash", "python"]
 
-def extract_course_links(question: str):
-    if not any(k.lower() in question.lower() for k in KEYWORDS):
+def extract_course_links(question):
+    if not any(keyword.lower() in question.lower() for keyword in KEYWORDS):
         return []
     links = []
     for entry in course_content:
@@ -62,9 +48,7 @@ def extract_course_links(question: str):
 class Question(BaseModel):
     question: str
 
-def generate_answer_with_aipipe(question: str, context: str) -> str:
-    if not AIPIPE_API_KEY:
-        raise HTTPException(status_code=500, detail="AIPIPE_API_KEY not set")
+def generate_answer_with_aipipe(question, context):
     headers = {
         "Authorization": f"Bearer {AIPIPE_API_KEY}",
         "Content-Type": "application/json"
@@ -78,52 +62,51 @@ def generate_answer_with_aipipe(question: str, context: str) -> str:
         "messages": messages,
         "temperature": 0.2
     }
-    resp = requests.post(AIPIPE_API_URL, headers=headers, json=payload, timeout=20)
-    if resp.status_code == 200:
-        return resp.json()["choices"][0]["message"]["content"].strip()
+    response = requests.post(AIPIPE_API_URL, headers=headers, json=payload)
+    if response.status_code == 200:
+        return response.json()["choices"][0]["message"]["content"].strip()
     else:
-        return "Unable to generate an answer at the moment."
+        return "Unable to generate an answer from AIPipe at the moment."
 
-def answer_logic(question: str):
-    # embed question
-    q_vec = vectorizer.transform([question])
-    sims = cosine_similarity(q_vec, discourse_vectors).flatten()
+@app.post("/api/")
+async def get_answer(q: Question):
+    question = q.question
+    q_vector = vectorizer.transform([question])
+    similarities = cosine_similarity(q_vector, discourse_vectors).flatten()
 
-    # pick top discourse links + context texts
+    # Top discourse links
     top_n = 7
-    idxs = sims.argsort()[-top_n:][::-1]
-    discourse_links, context_texts = [], []
-    for i in idxs:
-        url = url_map[i]
-        thread = next(t for t in discourse_data if t["url"] == url)
-        snippet = re.sub(r"\s+", " ", thread["posts"][0]["content"].strip())[:400]
-        discourse_links.append({"url": url, "text": snippet})
-        context_texts.append(snippet)
+    top_indices = similarities.argsort()[-top_n:][::-1]
+    discourse_links = []
+    context_texts = []
+    for idx in top_indices:
+        link = url_map[idx]
+        thread = next(item for item in discourse_data if item["url"] == link)
+        text = re.sub(r"\s+", " ", thread["posts"][0]["content"].strip())[:400]
+        discourse_links.append({"url": link, "text": text})
+        context_texts.append(text)
 
-    # course content
+    # Course content links
     course_links = extract_course_links(question)
 
-    # dedupe links
-    final_links, seen = [], set()
-    for item in discourse_links + course_links:
-        if item["url"] not in seen:
+    # Combine discourse links (priority first) + course links
+    combined_links = discourse_links + course_links
+
+    # Deduplicate by URL
+    seen_urls = set()
+    final_links = []
+    for item in combined_links:
+        if item.get("url") and item["url"] not in seen_urls:
             final_links.append(item)
-            seen.add(item["url"])
+            seen_urls.add(item["url"])
 
-    # generate answer
-    ctx = "\n\n".join(context_texts[:5])
-    answer = generate_answer_with_aipipe(question, ctx)
+    # Prepare combined context for AIPipe
+    combined_context = "\n\n".join(context_texts[:5])
 
-    return {"answer": answer, "links": final_links}
+    # Generate answer using AIPipe
+    answer = generate_answer_with_aipipe(question, combined_context)
 
-# unified root handling
-@app.api_route("/", methods=["GET", "POST", "OPTIONS"])
-async def root_or_query(q: Question = None):
-    if q and q.question:
-        return answer_logic(q.question)
-    return {"status": "ok", "message": "Virtual TA API is live."}
-
-# preserve the /api/ endpoint
-@app.post("/api/")
-async def api_query(q: Question):
-    return answer_logic(q.question)
+    return {
+        "answer": answer,
+        "links": final_links
+    }
