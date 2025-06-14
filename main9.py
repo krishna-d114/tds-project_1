@@ -3,13 +3,14 @@ from pydantic import BaseModel
 import json
 import re
 import requests
+import os
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 app = FastAPI()
 
 AIPIPE_API_URL = "https://aipipe.org/openrouter/v1/chat/completions"
-AIPIPE_API_KEY = "eyJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6IjI0ZjIwMDIwNDlAZHMuc3R1ZHkuaWl0bS5hYy5pbiJ9.i6Uu8E7cLKvNj32eZucpv4bqL7z7ZWKFlAuPsjUtdt4"
+AIPIPE_API_KEY = os.getenv("AIPIPE_API_KEY")
 MODEL_NAME = "openai/gpt-3.5-turbo-0125"
 
 with open("data/discourse_posts.json", "r", encoding="utf-8") as f:
