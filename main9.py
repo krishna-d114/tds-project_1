@@ -9,7 +9,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 app = FastAPI()
 
 AIPIPE_API_URL = "https://aipipe.org/openrouter/v1/chat/completions"
-AIPIPE_API_KEY = "eyJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6IjI0ZjIwMDAwNDRAZHMuc3R1ZHkuaWl0bS5hYy5pbiJ9.A2KoyIox_ZOIdC99q3bscuAsEzD1ayh8L8xW12TTK3w"
+AIPIPE_API_KEY = "eyJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6IjI0ZjIwMDIwNDlAZHMuc3R1ZHkuaWl0bS5hYy5pbiJ9.i6Uu8E7cLKvNj32eZucpv4bqL7z7ZWKFlAuPsjUtdt4"
 MODEL_NAME = "openai/gpt-3.5-turbo-0125"
 
 with open("data/discourse_posts.json", "r", encoding="utf-8") as f:
