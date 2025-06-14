@@ -1,4 +1,4 @@
-📘 TDS Virtual TA (FastAPI)
+# 📘 TDS Virtual TA (FastAPI)
 A lightweight FastAPI-based Virtual Teaching Assistant designed to help students with the Tools in Data Science (TDS) course. It combines:
 
 Discourse forum Q&A
